@@ -1,35 +1,37 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInWithCustomToken, 
-  signInAnonymously, 
-  onAuthStateChanged, 
-  GoogleAuthProvider, 
+import {
+  getAuth,
+  signInWithCustomToken,
+  signInAnonymously,
+  onAuthStateChanged,
+  GoogleAuthProvider,
   signInWithPopup,
-  signOut 
+  signOut
 } from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  setDoc, 
-  addDoc, 
-  getDoc, 
-  query, 
-  onSnapshot, 
+import {
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  addDoc,
+  getDoc,
+  query,
+  onSnapshot,
   deleteDoc,
   updateDoc
 } from 'firebase/firestore';
-import { 
-  GraduationCap, 
-  Calendar, 
-  MessageSquare, 
-  Search, 
-  Plus, 
-  Trash2, 
+import {
+  GraduationCap,
+  Calendar,
+  MessageSquare,
+  Search,
+  Plus,
+  Trash2,
   Star,
-  LogOut
+  LogOut,
+  Menu,
+  X
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -80,6 +82,12 @@ const TERMS = [
   "2026 1月期"
 ];
 
+// Navy Color Constants
+const NAVY_MAIN = "bg-[#1e3a8a]"; // main navy
+const NAVY_TEXT = "text-[#1e3a8a]"; // text navy
+const NAVY_LIGHT = "bg-[#EFF6FF]"; // light background like blue-50
+const NAVY_HOVER = "hover:bg-[#172554]"; // darker navy for hover
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [myPlan, setMyPlan] = useState([]);
@@ -89,6 +97,7 @@ export default function App() {
   const [isReviewing, setIsReviewing] = useState(null);
   const [reviewText, setReviewText] = useState('');
   const [reviewRating, setReviewRating] = useState(5);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Auth Initialization (Following Rule 3)
   useEffect(() => {
@@ -110,7 +119,7 @@ export default function App() {
 
     // プライベートな履修計画データ
     const planRef = collection(db, 'artifacts', appId, 'users', user.uid, 'plans');
-    const unsubscribePlan = onSnapshot(planRef, 
+    const unsubscribePlan = onSnapshot(planRef,
       (snapshot) => {
         setMyPlan(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
       },
@@ -194,14 +203,14 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 text-center border border-slate-100">
-          <div className="bg-blue-600 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-200">
+          <div className={`${NAVY_MAIN} w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-900/20`}>
             <GraduationCap className="text-white w-12 h-12" />
           </div>
           <h1 className="text-3xl font-bold text-slate-800 mb-2">Globis Planner</h1>
           <p className="text-slate-500 mb-8 leading-relaxed">
-            1月・4月・7月・9月期に対応。<br/>36単位修了までの計画を立てましょう。
+            1月・4月・7月・9月期に対応。<br />36単位修了までの計画を立てましょう。
           </p>
-          <button 
+          <button
             onClick={handleGoogleLogin}
             className="w-full bg-white border-2 border-slate-200 text-slate-700 py-3 rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-slate-50 transition-all active:scale-95"
           >
@@ -214,18 +223,18 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans pb-20">
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 px-4 md:px-8 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-[#F5F7FA] text-slate-800 font-sans pb-20">
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 px-4 md:px-8 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2">
-          <div className="bg-blue-600 p-1.5 rounded-lg">
+          <div className={`${NAVY_MAIN} p-1.5 rounded-lg`}>
             <GraduationCap className="text-white w-5 h-5" />
           </div>
-          <span className="font-bold text-xl tracking-tight hidden sm:inline">Globis Planner</span>
+          <span className="font-bold text-lg md:text-xl tracking-tight text-slate-800">Globis Planner</span>
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden md:block text-right">
             <p className="text-xs font-medium text-slate-400">Welcome,</p>
-            <p className="text-sm font-bold">{user.displayName || 'Guest'}</p>
+            <p className="text-sm font-bold text-slate-700">{user.displayName || 'Guest'}</p>
           </div>
           <button onClick={() => signOut(auth)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-red-500 transition-colors">
             <LogOut className="w-5 h-5" />
@@ -233,42 +242,42 @@ export default function App() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
-        
+      <main className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8">
+
         {/* Progress Section */}
-        <section className="bg-white rounded-[2rem] p-8 mb-8 shadow-sm border border-slate-100">
+        <section className="bg-white rounded-[2rem] p-6 md:p-8 mb-8 shadow-sm border border-slate-100">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
             <div>
-              <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">修了までの進捗</h2>
-              <p className="text-slate-500">現在 {totalUnits} 単位取得予定 / 目標 36 単位</p>
+              <h2 className="text-2xl font-bold flex items-center gap-2 mb-1 text-slate-800">修了までの進捗</h2>
+              <p className="text-slate-500 text-sm md:text-base">現在 {totalUnits} 単位取得予定 / 目標 36 単位</p>
             </div>
             <div className="flex items-end gap-1">
-              <span className="text-5xl font-black text-blue-600 leading-none">{Math.round((totalUnits / 36) * 100)}</span>
+              <span className={`text-5xl font-black ${NAVY_TEXT} leading-none`}>{Math.round((totalUnits / 36) * 100)}</span>
               <span className="text-xl font-bold text-slate-400 mb-1">%</span>
             </div>
           </div>
-          
+
           <div className="relative h-4 w-full bg-slate-100 rounded-full overflow-hidden mb-4">
-            <div 
-              className="absolute top-0 left-0 h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(37,99,235,0.3)]"
+            <div
+              className={`absolute top-0 left-0 h-full ${NAVY_MAIN} transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(30,58,138,0.3)]`}
               style={{ width: `${Math.min((totalUnits / 36) * 100, 100)}%` }}
             />
           </div>
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
+
           {/* Left: Timeline */}
-          <div className="lg:col-span-8 space-y-6">
-            <h3 className="text-xl font-bold flex items-center gap-2 ml-2">
-              <Calendar className="w-5 h-5 text-blue-600" />
+          <div className="lg:col-span-8 space-y-6 order-2 lg:order-1">
+            <h3 className={`text-xl font-bold flex items-center gap-2 ml-2 ${NAVY_TEXT}`}>
+              <Calendar className="w-5 h-5" />
               履修タイムライン
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {TERMS.map((term) => {
                 const termCourses = myPlan.filter(p => p.term === term);
                 const termUnits = termCourses.reduce((s, c) => s + c.units, 0);
-                
+
                 return (
                   <div key={term} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex justify-between items-center mb-4">
@@ -280,19 +289,19 @@ export default function App() {
                     <div className="space-y-3 min-h-[80px]">
                       {termCourses.length > 0 ? (
                         termCourses.map(course => (
-                          <div key={course.id} className="group relative bg-slate-50 p-3 rounded-xl flex items-center justify-between">
+                          <div key={course.id} className="group relative bg-[#F8FAFC] p-3 rounded-xl flex items-center justify-between border border-transparent hover:border-slate-200 transition-all">
                             <div className="flex-1">
                               <p className="text-sm font-bold text-slate-700 leading-tight">{course.name}</p>
                               <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">{course.category}</span>
                             </div>
-                            <div className="flex gap-2 items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button 
+                            <div className="flex gap-2 items-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                              <button
                                 onClick={() => setIsReviewing(course)}
-                                className="p-1.5 bg-white shadow-sm rounded-lg text-blue-600 hover:bg-blue-50"
+                                className={`p-1.5 bg-white shadow-sm rounded-lg ${NAVY_TEXT} hover:bg-blue-50`}
                               >
                                 <MessageSquare className="w-3.5 h-3.5" />
                               </button>
-                              <button 
+                              <button
                                 onClick={() => removeCourse(course.id)}
                                 className="p-1.5 bg-white shadow-sm rounded-lg text-red-500 hover:bg-red-50"
                               >
@@ -315,27 +324,27 @@ export default function App() {
           </div>
 
           {/* Right: Course Selection */}
-          <div className="lg:col-span-4 space-y-8">
+          <div className="lg:col-span-4 space-y-8 order-1 lg:order-2">
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 sticky top-24">
-              <h3 className="text-xl font-bold mb-6 flex items-center gap-2">科目を追加</h3>
-              
+              <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-slate-800">科目を追加</h3>
+
               <div className="space-y-4 mb-6">
                 <div className="relative">
                   <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input 
+                  <input
                     type="text"
                     placeholder="科目名で検索..."
-                    className="w-full bg-slate-50 border-none rounded-xl py-2.5 pl-10 pr-4 text-sm focus:ring-2 focus:ring-blue-500/20 outline-none"
+                    className="w-full bg-slate-50 border-none rounded-xl py-2.5 pl-10 pr-4 text-sm focus:ring-2 focus:ring-blue-900/10 outline-none"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {['All', '基本', '応用', '展開'].map(cat => (
-                    <button 
+                    <button
                       key={cat}
                       onClick={() => setFilterCategory(cat)}
-                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${filterCategory === cat ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${filterCategory === cat ? `${NAVY_MAIN} text-white` : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                     >
                       {cat}
                     </button>
@@ -345,16 +354,16 @@ export default function App() {
 
               <div className="space-y-3 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
                 {filteredCourses.map(course => (
-                  <div key={course.id} className="p-4 rounded-2xl bg-slate-50 hover:bg-white hover:shadow-md hover:ring-1 hover:ring-slate-100 transition-all group">
+                  <div key={course.id} className="p-4 rounded-2xl bg-[#F8FAFC] hover:bg-white hover:shadow-md hover:ring-1 hover:ring-slate-200 transition-all group">
                     <div className="flex justify-between items-start mb-2">
-                      <span className="bg-white px-2 py-0.5 rounded text-[10px] font-black text-blue-600 uppercase">
+                      <span className={`bg-white px-2 py-0.5 rounded text-[10px] font-black ${NAVY_TEXT} uppercase`}>
                         {course.field}
                       </span>
                       <span className="text-[10px] font-bold text-slate-400">{course.units} 単位</span>
                     </div>
-                    <p className="text-sm font-bold text-slate-700 mb-4 group-hover:text-blue-600 transition-colors">{course.name}</p>
-                    <select 
-                      className="w-full text-[10px] font-bold bg-white border border-slate-200 rounded-lg p-1.5 outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer"
+                    <p className={`text-sm font-bold text-slate-700 mb-4 group-hover:${NAVY_TEXT} transition-colors`}>{course.name}</p>
+                    <select
+                      className={`w-full text-[10px] font-bold bg-white border border-slate-200 rounded-lg p-1.5 outline-none focus:ring-2 focus:ring-blue-900/10 cursor-pointer`}
                       onChange={(e) => {
                         if (e.target.value) {
                           addCourse(course, e.target.value);
@@ -371,24 +380,24 @@ export default function App() {
             </div>
 
             {/* Review Feed */}
-            <div className="bg-blue-600 rounded-3xl p-6 shadow-lg shadow-blue-100">
+            <div className={`${NAVY_MAIN} rounded-3xl p-6 shadow-lg shadow-blue-900/20`}>
               <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">受講生のリアルな声</h3>
               <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar-white">
                 {reviews.length > 0 ? (
-                  reviews.sort((a,b) => b.createdAt - a.createdAt).map(review => (
-                    <div key={review.id} className="bg-blue-500/30 backdrop-blur-sm p-4 rounded-2xl border border-blue-400/30">
+                  reviews.sort((a, b) => b.createdAt - a.createdAt).map(review => (
+                    <div key={review.id} className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl border border-white/10">
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-[10px] font-bold text-blue-100 uppercase tracking-tight truncate max-w-[150px]">
                           {review.courseName}
                         </span>
                         <div className="flex gap-0.5">
                           {[...Array(5)].map((_, i) => (
-                            <Star key={i} className={`w-2.5 h-2.5 ${i < review.rating ? 'text-yellow-300 fill-yellow-300' : 'text-blue-300'}`} />
+                            <Star key={i} className={`w-2.5 h-2.5 ${i < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-slate-400'}`} />
                           ))}
                         </div>
                       </div>
                       <p className="text-xs text-white leading-relaxed mb-3">"{review.comment}"</p>
-                      <span className="text-[10px] font-medium text-blue-100 italic">- {review.userName}</span>
+                      <span className="text-[10px] font-medium text-blue-200 italic">- {review.userName}</span>
                     </div>
                   ))
                 ) : (
@@ -404,16 +413,16 @@ export default function App() {
       {isReviewing && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-            <h3 className="text-2xl font-bold mb-1">講座レビューを投稿</h3>
+            <h3 className="text-2xl font-bold mb-1 text-slate-800">講座レビューを投稿</h3>
             <p className="text-slate-400 text-sm mb-6">{isReviewing.name}</p>
-            
+
             <div className="space-y-6">
               <div>
                 <label className="block text-xs font-black uppercase text-slate-400 mb-3 tracking-widest">満足度</label>
                 <div className="flex gap-2">
-                  {[1,2,3,4,5].map(num => (
-                    <button 
-                      key={num} 
+                  {[1, 2, 3, 4, 5].map(num => (
+                    <button
+                      key={num}
                       onClick={() => setReviewRating(num)}
                       className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${reviewRating >= num ? 'bg-yellow-400 text-white shadow-lg shadow-yellow-100' : 'bg-slate-100 text-slate-400'}`}
                     >
@@ -423,19 +432,19 @@ export default function App() {
                 </div>
               </div>
 
-              <textarea 
-                className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-500/20 outline-none h-32 resize-none"
+              <textarea
+                className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-900/20 outline-none h-32 resize-none text-slate-700"
                 placeholder="Day4の負荷や、内容の満足度などを教えてください..."
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
               />
 
               <div className="flex gap-3">
-                <button onClick={() => setIsReviewing(null)} className="flex-1 py-3 font-bold text-slate-400">キャンセル</button>
-                <button 
+                <button onClick={() => setIsReviewing(null)} className="flex-1 py-3 font-bold text-slate-400 hover:text-slate-600">キャンセル</button>
+                <button
                   onClick={submitReview}
                   disabled={!reviewText}
-                  className="flex-[2] bg-blue-600 text-white py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 disabled:bg-slate-200 disabled:shadow-none transition-all"
+                  className={`flex-[2] ${NAVY_MAIN} ${NAVY_HOVER} text-white py-3 rounded-2xl font-bold shadow-lg shadow-blue-900/20 disabled:bg-slate-200 disabled:shadow-none transition-all`}
                 >
                   投稿する
                 </button>
@@ -447,9 +456,9 @@ export default function App() {
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
         .custom-scrollbar-white::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar-white::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 10px; }
+        .custom-scrollbar-white::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
       `}</style>
     </div>
   );
