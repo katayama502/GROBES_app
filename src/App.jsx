@@ -16,6 +16,7 @@ import {
   setDoc,
   addDoc,
   getDoc,
+  getDocs,
   query,
   onSnapshot,
   deleteDoc,
@@ -31,7 +32,9 @@ import {
   Star,
   LogOut,
   Menu,
-  X
+  X,
+  Settings,
+  Edit2
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -49,8 +52,8 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'globis-credit-app';
 
-// --- Master Course Data ---
-const COURSE_MASTER = [
+// --- Initial Master Course Data (For Seeding) ---
+const INITIAL_COURSE_MASTER = [
   { id: 'ob', name: '組織行動とリーダーシップ', units: 1.5, category: '基本', field: '組織・人事', report: 'Day4' },
   { id: 'hrm', name: '人材マネジメント', units: 1.5, category: '基本', field: '組織・人事', report: 'Day4' },
   { id: 'mkt-base', name: 'マーケティング・経営戦略基礎', units: 1.5, category: '基本', field: 'マーケ・戦略', report: '--' },
@@ -75,11 +78,9 @@ const COURSE_MASTER = [
   { id: 'project', name: '研究・起業プロジェクト', units: 3.0, category: '展開', field: 'プロジェクト', report: '--' },
 ];
 
-// --- 更新された受講期設定 ---
+// --- Updated Terms (Universal) ---
 const TERMS = [
-  "2024 1月期", "2024 4月期", "2024 7月期", "2024 9月期",
-  "2025 1月期", "2025 4月期", "2025 7月期", "2025 9月期",
-  "2026 1月期"
+  "1月期", "4月期", "7月期", "10月期"
 ];
 
 // Navy Color Constants
@@ -90,16 +91,30 @@ const NAVY_HOVER = "hover:bg-[#172554]"; // darker navy for hover
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [courses, setCourses] = useState([]);
   const [myPlan, setMyPlan] = useState([]);
   const [reviews, setReviews] = useState([]);
+
+  // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
+  const [teacherFilter, setTeacherFilter] = useState('');
+
+  // Review State
   const [isReviewing, setIsReviewing] = useState(null);
   const [reviewText, setReviewText] = useState('');
   const [reviewRating, setReviewRating] = useState(5);
+  const [reviewTeacher, setReviewTeacher] = useState('');
+
+  // Admin State
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [isEditingCourse, setIsEditingCourse] = useState(null); // For Add/Edit Modal
+  const [editCourseData, setEditCourseData] = useState({ name: '', category: '基本', field: '', units: 1.5, report: '' });
+
+  // Mobile Menu
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Auth Initialization (Following Rule 3)
+  // Auth Initialization
   useEffect(() => {
     const initAuth = async () => {
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -113,20 +128,24 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Data Sync (Following Rule 1 & 3)
+  // Data Sync
   useEffect(() => {
-    if (!user) return;
+    // 1. Fetch Courses (Seed if empty)
+    const coursesRef = collection(db, 'artifacts', appId, 'public', 'data', 'courses');
+    const unsubscribeCourses = onSnapshot(coursesRef, async (snapshot) => {
+      if (snapshot.empty) {
+        console.log("Seeding courses...");
+        // Seed initial data
+        for (const course of INITIAL_COURSE_MASTER) {
+          const newDocRef = doc(coursesRef); // Auto ID
+          await setDoc(newDocRef, { ...course, originalId: course.id });
+        }
+      } else {
+        setCourses(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+      }
+    }, (error) => console.error("Firestore Courses Error:", error));
 
-    // プライベートな履修計画データ
-    const planRef = collection(db, 'artifacts', appId, 'users', user.uid, 'plans');
-    const unsubscribePlan = onSnapshot(planRef,
-      (snapshot) => {
-        setMyPlan(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
-      },
-      (error) => console.error("Firestore Plan Error:", error)
-    );
-
-    // パブリックな口コミデータ
+    // 2. Public Reviews
     const reviewsRef = collection(db, 'artifacts', appId, 'public', 'data', 'reviews');
     const unsubscribeReviews = onSnapshot(reviewsRef,
       (snapshot) => {
@@ -136,9 +155,25 @@ export default function App() {
     );
 
     return () => {
-      unsubscribePlan();
+      unsubscribeCourses();
       unsubscribeReviews();
     };
+  }, []);
+
+  // User Plan Sync
+  useEffect(() => {
+    if (!user) {
+      setMyPlan([]);
+      return;
+    }
+    const planRef = collection(db, 'artifacts', appId, 'users', user.uid, 'plans');
+    const unsubscribePlan = onSnapshot(planRef,
+      (snapshot) => {
+        setMyPlan(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+      },
+      (error) => console.error("Firestore Plan Error:", error)
+    );
+    return () => unsubscribePlan();
   }, [user]);
 
   // Actions
@@ -151,7 +186,7 @@ export default function App() {
     }
   };
 
-  const addCourse = async (course, term) => {
+  const addCourseToPlan = async (course, term) => {
     if (!user) return;
     const planRef = collection(db, 'artifacts', appId, 'users', user.uid, 'plans');
     await addDoc(planRef, {
@@ -164,26 +199,62 @@ export default function App() {
     });
   };
 
-  const removeCourse = async (planId) => {
+  const removeCourseFromPlan = async (planId) => {
     if (!user) return;
     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'plans', planId);
     await deleteDoc(docRef);
   };
 
+  // Review Actions
   const submitReview = async () => {
     if (!user || !isReviewing) return;
     const reviewsRef = collection(db, 'artifacts', appId, 'public', 'data', 'reviews');
     await addDoc(reviewsRef, {
-      courseId: isReviewing.courseId,
+      courseId: isReviewing.courseId || isReviewing.id, // Handle both from plan and course list
       courseName: isReviewing.name,
       comment: reviewText,
       rating: reviewRating,
+      teacherName: reviewTeacher,
       userName: user.displayName || '受講生',
       uid: user.uid,
       createdAt: Date.now()
     });
     setIsReviewing(null);
     setReviewText('');
+    setReviewTeacher('');
+    setReviewRating(5);
+  };
+
+  // Admin Actions
+  const handleSaveCourse = async () => {
+    const coursesRef = collection(db, 'artifacts', appId, 'public', 'data', 'courses');
+
+    if (isEditingCourse && isEditingCourse.id) {
+      // Update
+      const docRef = doc(coursesRef, isEditingCourse.id);
+      await updateDoc(docRef, editCourseData);
+    } else {
+      // Add New
+      await addDoc(coursesRef, editCourseData);
+    }
+    setIsEditingCourse(null);
+    setEditCourseData({ name: '', category: '基本', field: '', units: 1.5, report: '' });
+  };
+
+  const handleDeleteCourse = async (id) => {
+    if (!window.confirm("本当に削除しますか？")) return;
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'courses', id);
+    await deleteDoc(docRef);
+  };
+
+  const openCourseModal = (course = null) => {
+    if (course) {
+      setEditCourseData(course);
+      setIsEditingCourse(course);
+    } else {
+      setEditCourseData({ name: '', category: '基本', field: '', units: 1.5, report: '' });
+      setIsEditingCourse({ isNew: true });
+    }
   };
 
   // Derived State
@@ -192,13 +263,22 @@ export default function App() {
   }, [myPlan]);
 
   const filteredCourses = useMemo(() => {
-    return COURSE_MASTER.filter(c => {
+    return courses.filter(c => {
       const matchesSearch = c.name.includes(searchTerm);
       const matchesCategory = filterCategory === 'All' || c.category === filterCategory;
       return matchesSearch && matchesCategory;
     });
-  }, [searchTerm, filterCategory]);
+  }, [searchTerm, filterCategory, courses]);
 
+  const filteredReviews = useMemo(() => {
+    return reviews.filter(r => {
+      const matchesTeacher = teacherFilter ? (r.teacherName && r.teacherName.includes(teacherFilter)) : true;
+      const matchesSearch = searchTerm ? (r.courseName.includes(searchTerm) || (r.comment && r.comment.includes(searchTerm))) : true;
+      return matchesTeacher && matchesSearch;
+    });
+  }, [reviews, teacherFilter, searchTerm]);
+
+  // Login Screen
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -208,7 +288,8 @@ export default function App() {
           </div>
           <h1 className="text-3xl font-bold text-slate-800 mb-2">Globis Planner</h1>
           <p className="text-slate-500 mb-8 leading-relaxed">
-            1月・4月・7月・9月期に対応。<br />36単位修了までの計画を立てましょう。
+            全期対応 / 36単位修了までの計画<br />
+            あなたの学習の軌跡を記録しましょう
           </p>
           <button
             onClick={handleGoogleLogin}
@@ -232,6 +313,9 @@ export default function App() {
           <span className="font-bold text-lg md:text-xl tracking-tight text-slate-800">Globis Planner</span>
         </div>
         <div className="flex items-center gap-4">
+          <button onClick={() => setIsAdminMode(!isAdminMode)} className={`p-2 rounded-lg text-xs font-bold transition-colors ${isAdminMode ? 'bg-red-100 text-red-600' : 'text-slate-400 hover:text-slate-600'}`}>
+            {isAdminMode ? 'Admin Mode ON' : 'Admin'}
+          </button>
           <div className="hidden md:block text-right">
             <p className="text-xs font-medium text-slate-400">Welcome,</p>
             <p className="text-sm font-bold text-slate-700">{user.displayName || 'Guest'}</p>
@@ -302,7 +386,7 @@ export default function App() {
                                 <MessageSquare className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => removeCourse(course.id)}
+                                onClick={() => removeCourseFromPlan(course.id)}
                                 className="p-1.5 bg-white shadow-sm rounded-lg text-red-500 hover:bg-red-50"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -326,7 +410,16 @@ export default function App() {
           {/* Right: Course Selection */}
           <div className="lg:col-span-4 space-y-8 order-1 lg:order-2">
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 sticky top-24">
-              <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-slate-800">科目を追加</h3>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                  {isAdminMode ? '科目の管理' : '科目を追加'}
+                </h3>
+                {isAdminMode && (
+                  <button onClick={() => openCourseModal()} className={`${NAVY_MAIN} text-white p-2 rounded-lg`}>
+                    <Plus className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
 
               <div className="space-y-4 mb-6">
                 <div className="relative">
@@ -359,14 +452,22 @@ export default function App() {
                       <span className={`bg-white px-2 py-0.5 rounded text-[10px] font-black ${NAVY_TEXT} uppercase`}>
                         {course.field}
                       </span>
-                      <span className="text-[10px] font-bold text-slate-400">{course.units} 単位</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-slate-400">{course.units} 単位</span>
+                        {isAdminMode && (
+                          <div className="flex gap-1">
+                            <button onClick={() => openCourseModal(course)} className="text-blue-500"><Edit2 className="w-3 h-3" /></button>
+                            <button onClick={() => handleDeleteCourse(course.id)} className="text-red-500"><Trash2 className="w-3 h-3" /></button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <p className={`text-sm font-bold text-slate-700 mb-4 group-hover:${NAVY_TEXT} transition-colors`}>{course.name}</p>
                     <select
                       className={`w-full text-[10px] font-bold bg-white border border-slate-200 rounded-lg p-1.5 outline-none focus:ring-2 focus:ring-blue-900/10 cursor-pointer`}
                       onChange={(e) => {
                         if (e.target.value) {
-                          addCourse(course, e.target.value);
+                          addCourseToPlan(course, e.target.value);
                           e.target.value = "";
                         }
                       }}
@@ -381,18 +482,38 @@ export default function App() {
 
             {/* Review Feed */}
             <div className={`${NAVY_MAIN} rounded-3xl p-6 shadow-lg shadow-blue-900/20`}>
-              <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">受講生のリアルな声</h3>
+              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">受講生のリアルな声</h3>
+
+              {/* Teacher Filter */}
+              <div className="mb-4 relative">
+                <Search className="absolute left-3 top-2.5 w-3 h-3 text-blue-300" />
+                <input
+                  type="text"
+                  placeholder="講師名や科目で検索..."
+                  className="w-full bg-blue-900/50 border border-blue-400/30 rounded-xl py-2 pl-8 pr-4 text-xs text-white placeholder-blue-300 focus:outline-none focus:border-blue-300 transition-all"
+                  value={teacherFilter}
+                  onChange={(e) => setTeacherFilter(e.target.value)}
+                />
+              </div>
+
               <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar-white">
-                {reviews.length > 0 ? (
-                  reviews.sort((a, b) => b.createdAt - a.createdAt).map(review => (
+                {filteredReviews.length > 0 ? (
+                  filteredReviews.sort((a, b) => b.createdAt - a.createdAt).map(review => (
                     <div key={review.id} className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl border border-white/10">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] font-bold text-blue-100 uppercase tracking-tight truncate max-w-[150px]">
-                          {review.courseName}
-                        </span>
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="block text-[10px] font-bold text-blue-100 uppercase tracking-tight truncate max-w-[150px]">
+                            {review.courseName}
+                          </span>
+                          {review.teacherName && (
+                            <span className="block text-[10px] text-blue-300 mt-0.5 font-medium">
+                              {review.teacherName} 講師
+                            </span>
+                          )}
+                        </div>
                         <div className="flex gap-0.5">
                           {[...Array(5)].map((_, i) => (
-                            <Star key={i} className={`w-2.5 h-2.5 ${i < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-slate-400'}`} />
+                            <Star key={i} className={`w-2 h-2 ${i < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-slate-400'}`} />
                           ))}
                         </div>
                       </div>
@@ -401,7 +522,7 @@ export default function App() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-blue-200 text-center py-4">まだ口コミがありません</p>
+                  <p className="text-xs text-blue-200 text-center py-4">条件に一致する口コミがありません</p>
                 )}
               </div>
             </div>
@@ -413,12 +534,23 @@ export default function App() {
       {isReviewing && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-            <h3 className="text-2xl font-bold mb-1 text-slate-800">講座レビューを投稿</h3>
+            <h3 className="text-xl font-bold mb-1 text-slate-800">レビューを投稿</h3>
             <p className="text-slate-400 text-sm mb-6">{isReviewing.name}</p>
 
-            <div className="space-y-6">
+            <div className="space-y-5">
               <div>
-                <label className="block text-xs font-black uppercase text-slate-400 mb-3 tracking-widest">満足度</label>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-2 tracking-widest">講師名 (任意)</label>
+                <input
+                  type="text"
+                  placeholder="例: 山田 太郎"
+                  className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm"
+                  value={reviewTeacher}
+                  onChange={(e) => setReviewTeacher(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-2 tracking-widest">満足度</label>
                 <div className="flex gap-2">
                   {[1, 2, 3, 4, 5].map(num => (
                     <button
@@ -433,7 +565,7 @@ export default function App() {
               </div>
 
               <textarea
-                className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-900/20 outline-none h-32 resize-none text-slate-700"
+                className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-900/20 outline-none h-24 resize-none text-slate-700"
                 placeholder="Day4の負荷や、内容の満足度などを教えてください..."
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
@@ -448,6 +580,50 @@ export default function App() {
                 >
                   投稿する
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Course Modal */}
+      {isEditingCourse && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="text-xl font-bold mb-4 text-slate-800">
+              {isEditingCourse.isNew ? '新規科目登録' : '科目編集'}
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-slate-400 font-bold uppercase">科目名</label>
+                <input className="w-full bg-slate-50 rounded-lg p-2 mt-1 text-sm border border-slate-200"
+                  value={editCourseData.name} onChange={(e) => setEditCourseData({ ...editCourseData, name: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-slate-400 font-bold uppercase">区分</label>
+                  <select className="w-full bg-slate-50 rounded-lg p-2 mt-1 text-sm border border-slate-200"
+                    value={editCourseData.category} onChange={(e) => setEditCourseData({ ...editCourseData, category: e.target.value })}>
+                    <option value="基本">基本</option>
+                    <option value="応用">応用</option>
+                    <option value="展開">展開</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 font-bold uppercase">分野</label>
+                  <input className="w-full bg-slate-50 rounded-lg p-2 mt-1 text-sm border border-slate-200"
+                    value={editCourseData.field} onChange={(e) => setEditCourseData({ ...editCourseData, field: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 font-bold uppercase">単位数</label>
+                <input type="number" step="0.5" className="w-full bg-slate-50 rounded-lg p-2 mt-1 text-sm border border-slate-200"
+                  value={editCourseData.units} onChange={(e) => setEditCourseData({ ...editCourseData, units: parseFloat(e.target.value) })} />
+              </div>
+
+              <div className="flex gap-2 mt-6">
+                <button onClick={() => setIsEditingCourse(null)} className="flex-1 py-2 text-slate-500 font-bold">キャンセル</button>
+                <button onClick={handleSaveCourse} className={`flex-1 ${NAVY_MAIN} text-white rounded-xl font-bold py-2`}>保存</button>
               </div>
             </div>
           </div>
